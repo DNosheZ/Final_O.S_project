@@ -1,152 +1,128 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <ctype.h>
+#include <time.h>
 
-// Definición de constantes sin usar #define
-const uint32_t NUM_PAGES = (1 << 20); // 2^20 páginas para 32 bits con 4 KiB por página
-const int TLB_SIZE = 4; // Tamaño máximo de la TLB (ajustable)
+#define TLB_SIZE 5
+#define PAGE_SIZE 4096 // 4 KiB
+#define BINARY_PAGE_BITS 20
+#define BINARY_OFFSET_BITS 12
+#define MAX_TLB_BYTES 285
 
-// Declaración de la tabla de páginas sin usar arreglos ni estructuras
-uint32_t *page_table_ppn; // Simulación de la tabla de páginas usando punteros para PPNs
-int *page_table_valid;    // Simulación de bits de validez de la tabla de páginas
+// Punteros para el TLB
+uint32_t *tlb_virtual_address;
+uint32_t *tlb_page_number;
+uint32_t *tlb_offset;
+char **tlb_page_binary;
+char **tlb_offset_binary;
 
-// Punteros para manejar la lista enlazada de la TLB
-void *tlb_head = NULL; // Puntero a la cabeza de la TLB
-void *tlb_tail = NULL; // Puntero a la cola de la TLB
-int tlb_count = 0;     // Contador de entradas en la TLB
+int tlb_start = 0; // FIFO index to replace
 
-// Función para imprimir un número en formato binario
-void print_binary(uint32_t number) {
-    for (int i = 31; i >= 0; i--) {
-        printf("%d", (number >> i) & 1);
-        if (i % 4 == 0) {
-            printf(" "); // Espacio cada 4 bits para mayor claridad
+
+unsigned int decimal_a_binario(int decimal) {
+    unsigned int binario = 0;
+    int posicion = 0;
+
+    // Procesar cada bit desde el menos significativo hasta el más significativo
+    while (decimal > 0) {
+        // Obtener el bit menos significativo y colocarlo en la posición correspondiente
+        binario |= (decimal & 1) << posicion;
+        // Desplazar a la derecha el decimal para procesar el siguiente bit
+        decimal >>= 1;
+        posicion++;
+    }
+
+    return binario;
+}
+
+
+int binario_a_decimal(unsigned int binario) {
+    int decimal = 0;
+    int posicion = 0;
+
+    // Procesar cada bit desde el menos significativo hasta el más significativo
+    while (binario > 0) {
+        // Si el bit en la posición actual es 1, sumar 2^posicion al resultado
+        if (binario & 1) {
+            decimal += (1 << posicion);
+        }
+        // Desplazar a la derecha el binario para procesar el siguiente bit
+        binario >>= 1;
+        posicion++;
+    }
+
+    return decimal;
+}
+
+void gestionar_TLB(uint32_t address) {
+    uint32_t page_number = address >> BINARY_OFFSET_BITS;
+    uint32_t offset = address & (PAGE_SIZE - 1);
+    unsigned int page_binary = decimal_a_binario(page_number);
+    unsigned int offset_binary = decimal_a_binario(offset);
+
+    // Comprobar si ya existe la entrada (TLB Hit)
+    for (int i = 0; i < TLB_SIZE; i++) {
+        if (tlb_virtual_address[i] == address) {
+            printf("TLB Hit\n");
+            return;
         }
     }
+
+    // Si no existe, reemplazar la entrada más antigua (FIFO) (TLB Miss)
+    printf("TLB Miss\n");
+    printf("Reemplazando entrada en %p\n", (void *)&tlb_virtual_address[tlb_start]);
+
+    tlb_virtual_address[tlb_start] = address;
+    tlb_page_number[tlb_start] = page_number;
+    tlb_offset[tlb_start] = offset;
+    snprintf(tlb_page_binary[tlb_start], BINARY_PAGE_BITS + 1, "%020u", page_binary);
+    snprintf(tlb_offset_binary[tlb_start], BINARY_OFFSET_BITS + 1, "%012u", offset_binary);
+
+    // Incrementar el índice FIFO (Ciclo en 0 si llega al final del buffer)
+    tlb_start = (tlb_start + 1) % TLB_SIZE;
 }
 
-// Función para buscar en la TLB
-uint32_t search_tlb(uint32_t vpn) {
-    void *current = tlb_head;
-    while (current != NULL) {
-        uint32_t *current_vpn = (uint32_t *)current;         // VPN almacenado en el nodo
-        uint32_t *current_ppn = (uint32_t *)(current + 4);   // PPN almacenado en el nodo
-        void **next = (void **)(current + 8);                // Puntero al siguiente nodo
+int main(int argc, char *argv[]){
+    uint32_t address;
+    char input[20];
+    double start_time, end_time;
 
-        if (*current_vpn == vpn) {
-            return *current_ppn; // Retornar PPN si se encuentra la entrada
-        }
-        current = *next;
-    }
-    return 0xFFFFFFFF; // Retornar error si no se encuentra la entrada
-}
+    //tan pronto empieza ejecucion, inicializamos el TLB
+    // Inicialización de memoria para TLB
+    tlb_virtual_address = (uint32_t *)malloc(TLB_SIZE * sizeof(uint32_t));
+    tlb_page_number = (uint32_t *)malloc(TLB_SIZE * sizeof(uint32_t));
+    tlb_offset = (uint32_t *)malloc(TLB_SIZE * sizeof(uint32_t));
+    tlb_page_binary = (char **)malloc(TLB_SIZE * sizeof(char *));
+    tlb_offset_binary = (char **)malloc(TLB_SIZE * sizeof(char *));
 
-// Función para agregar una entrada a la TLB (FIFO)
-void add_to_tlb(uint32_t vpn, uint32_t ppn) {
-    // Crear un nuevo nodo en el heap (12 bytes: VPN, PPN, puntero al siguiente)
-    void *new_node = malloc(12);
-    *(uint32_t *)new_node = vpn;             // Almacenar VPN en el nodo
-    *(uint32_t *)(new_node + 4) = ppn;       // Almacenar PPN en el nodo
-    *(void **)(new_node + 8) = NULL;         // Siguiente nodo es NULL
-
-    // Si la TLB está vacía
-    if (tlb_head == NULL) {
-        tlb_head = new_node;
-        tlb_tail = new_node;
-    } else {
-        // Agregar el nuevo nodo al final
-        *(void **)(tlb_tail + 8) = new_node;
-        tlb_tail = new_node;
+    for (int i = 0; i < TLB_SIZE; i++) {
+        tlb_page_binary[i] = (char *)malloc((BINARY_PAGE_BITS + 1) * sizeof(char));
+        tlb_offset_binary[i] = (char *)malloc((BINARY_OFFSET_BITS + 1) * sizeof(char));
     }
 
-    tlb_count++;
 
-    // Si la TLB está llena, eliminar la entrada más antigua (FIFO)
-    if (tlb_count > TLB_SIZE) {
-        void *old_node = tlb_head;
-        tlb_head = *(void **)(tlb_head + 8);
-        free(old_node);
-        tlb_count--;
-    }
-}
 
-// Función para traducir una dirección virtual a física usando TLB
-uint32_t translate_address(uint32_t virtual_address) {
-    uint32_t vpn = virtual_address >> 12;  // Los primeros 20 bits (VPN)
-    uint32_t offset = virtual_address & 0xFFF; // Los últimos 12 bits (desplazamiento)
-
-    // Buscar en la TLB primero
-    uint32_t ppn = search_tlb(vpn);
-    if (ppn != 0xFFFFFFFF) {
-        // Entrada encontrada en la TLB
-        printf("TLB hit: Página virtual (dec: %u, bin: ", vpn);
-        print_binary(vpn);
-        printf(") -> Página física %u\n", ppn);
-        return (ppn << 12) | offset;
-    }
-
-    // Entrada no encontrada en la TLB, buscar en la tabla de páginas
-    if (page_table_valid[vpn]) {
-        ppn = page_table_ppn[vpn];
-        add_to_tlb(vpn, ppn); // Agregar la nueva entrada a la TLB
-        printf("TLB miss: Página virtual (dec: %u, bin: ", vpn);
-        print_binary(vpn);
-        printf(") -> Página física %u\n", ppn);
-        return (ppn << 12) | offset;
-    } else {
-        printf("Error: Dirección virtual no válida en la página (dec: %u, bin: ", vpn);
-        print_binary(vpn);
-        printf(")\n");
-        return 0xFFFFFFFF; // Retorna un valor de error
-    }
-}
-
-int main() {
-    // Inicialización de la tabla de páginas
-    page_table_ppn = (uint32_t *)malloc(NUM_PAGES * sizeof(uint32_t));
-    page_table_valid = (int *)malloc(NUM_PAGES * sizeof(int));
-
-    // Configurar algunos valores en la tabla de páginas para la simulación
-    page_table_ppn[0] = 0x12345;    // Ejemplo de PPN
-    page_table_valid[0] = 1;        // Entrada válida
-
-    char input[20];  // Buffer para leer las direcciones y el carácter de salida
-    uint32_t virtual_address;
-
-    // Bucle que sigue hasta que el usuario ingrese 's'
     while (1) {
-        printf("Ingrese una dirección virtual en decimal (o 's' para salir): ");
-        scanf("%s", input);  // Leer la entrada como string
-
-        // Verificar si la entrada es 's' (case insensitive)
-        if (tolower(input[0]) == 's' && input[1] == '\0') {
-            printf("Good bye!");
-            break;  // Salir del bucle si se ingresa 's'
+        printf("Ingrese dirección virtual: ");
+        fgets(input, 20, stdin);
+        if (input[0] == 's' || input[0] == 'S') {
+            printf("Good bye!\n");
+            break;
         }
 
-        // Convertir la entrada a un número decimal
-        virtual_address = (uint32_t)strtoul(input, NULL, 10);
-
-        // Traducir la dirección y mostrar el resultado
-        uint32_t physical_address = translate_address(virtual_address);
-        if (physical_address != 0xFFFFFFFF) {
-            printf("Dirección virtual: %u -> Dirección física: 0x%08X\n", virtual_address, physical_address);
-        }
     }
-
-    // Liberar memoria asignada
-    free(page_table_ppn);
-    free(page_table_valid);
-
-    // Liberar nodos de la TLB
-    void *current = tlb_head;
-    while (current != NULL) {
-        void *next = *(void **)(current + 8);
-        free(current);
-        current = next;
+    //liberacion de recursos
+    for (int i = 0; i < TLB_SIZE; i++) {
+        free(tlb_page_binary[i]);
+        free(tlb_offset_binary[i]);
     }
+    free(tlb_virtual_address);
+    free(tlb_page_number);
+    free(tlb_offset);
+    free(tlb_page_binary);
+    free(tlb_offset_binary);
 
-    printf("Programa terminado.\n");
     return 0;
 }
