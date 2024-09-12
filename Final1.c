@@ -20,6 +20,18 @@ char **tlb_offset_binary;
 
 int tlb_start = 0; // FIFO index to replace
 
+#define CLOCK_MONOTONIC 1 // Constante que simula el uso de CLOCK_MONOTONIC
+
+long start_sec, start_nsec, end_sec, end_nsec; // Variables para tiempos de inicio y fin
+
+// Función para obtener el tiempo simulado, ya que no usamos structs
+void obtener_tiempo(int clock_id, long *sec, long *nsec) {
+    long temp_sec, temp_nsec;
+    clock_gettime(clock_id, (struct timespec *)&temp_sec); // Llamada directa simulada a clock_gettime
+    *sec = temp_sec;
+    *nsec = temp_nsec;
+}
+
 
 unsigned int decimal_a_binario(int decimal) {
     unsigned int binario = 0;
@@ -112,7 +124,29 @@ int main(int argc, char *argv[]){
             break;
         }
 
+        // Convierte la entrada a un número entero
+        address = (uint32_t)strtoul(input, NULL, 10);
+
+        // Medir el tiempo antes de la operación del TLB
+        obtener_tiempo(CLOCK_MONOTONIC, &start_sec, &start_nsec);
+
+        // Llama a la función de gestión del TLB
+        gestionar_TLB(address);
+
+        // Medir el tiempo después de la operación del TLB
+        obtener_tiempo(CLOCK_MONOTONIC, &end_sec, &end_nsec);
+
+        // Calcular el tiempo transcurrido en nanosegundos y convertir a milisegundos
+        double elapsed_time = (end_sec - start_sec) * 1e9 + (end_nsec - start_nsec);
+        elapsed_time /= 1e6; // Convertir a milisegundos
+
+        printf("Tiempo de ejecución del TLB: %.6f ms\n", elapsed_time);
+
+
+
     }
+
+
     //liberacion de recursos
     for (int i = 0; i < TLB_SIZE; i++) {
         free(tlb_page_binary[i]);
