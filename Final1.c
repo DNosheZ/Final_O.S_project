@@ -78,6 +78,10 @@ void gestionar_TLB(uint32_t address) {
     for (int i = 0; i < TLB_SIZE; i++) {
         if (tlb_virtual_address[i] == address) {
             printf("TLB Hit\n");
+            printf("Página: %u\n", tlb_page_number[i]);
+            printf("Desplazamiento: %u\n", tlb_offset[i]);
+            printf("Página en binario: %s\n", tlb_page_binary[i]);
+            printf("Desplazamiento en binario: %s\n", tlb_offset_binary[i]);
             return;
         }
     }
@@ -92,12 +96,20 @@ void gestionar_TLB(uint32_t address) {
     snprintf(tlb_page_binary[tlb_start], BINARY_PAGE_BITS + 1, "%020u", page_binary);
     snprintf(tlb_offset_binary[tlb_start], BINARY_OFFSET_BITS + 1, "%012u", offset_binary);
 
-    // Incrementar el índice FIFO (Ciclo en 0 si llega al final del buffer)
+    // Imprime las características de la nueva entrada
+    printf("Página: %u\n", page_number);
+    printf("Desplazamiento: %u\n", offset);
+    printf("Página en binario: %020u\n", page_binary);
+    printf("Desplazamiento en binario: %012u\n", offset_binary);
+
+    // Incrementa el índice FIFO (Ciclo en 0 si llega al final del buffer)
     tlb_start = (tlb_start + 1) % TLB_SIZE;
 }
 
 int main(int argc, char *argv[]){
     uint32_t address;
+    uint32_t BinaryPage;
+    uint32_t BinaryDesplacement;
     char input[20];
     double start_time, end_time;
 
@@ -124,8 +136,15 @@ int main(int argc, char *argv[]){
             break;
         }
 
-        // Convierte la entrada a un número entero
+        // Convierte la entrada a un número entero decimal
         address = (uint32_t)strtoul(input, NULL, 10);
+
+        // Convierte la dirección decimal a binario (si es necesario)
+        unsigned int address_binary = decimal_a_binario(address);
+
+        
+
+
 
         // Medir el tiempo antes de la operación del TLB
         obtener_tiempo(CLOCK_MONOTONIC, &start_sec, &start_nsec);
@@ -141,7 +160,9 @@ int main(int argc, char *argv[]){
         elapsed_time /= 1e6; // Convertir a milisegundos
 
         printf("Tiempo de ejecución del TLB: %.6f ms\n", elapsed_time);
-
+        
+        
+ 
 
 
     }
