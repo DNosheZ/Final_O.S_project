@@ -49,7 +49,7 @@ uint32_t binary_to_decimal(const char *binary_str) {
 
 // Función para acceder a la entrada del TLB
 uint32_t* get_tlb_entry(uint32_t *tlb, int index) {
-    return &tlb[index * 4]; // Cada entrada tiene 4 valores (memory_address, page_number, offset, valid, offset_binary, page_number_binary)
+    return &tlb[index * 4]; // Cada entrada tiene 4 valores (memory_address, page_number, offset, valid)
 }
 
 // Función para buscar en el TLB (simulación de TLB Hit/Miss)
@@ -84,7 +84,7 @@ unsigned int direccion_reemplazo(uint32_t *tlb,int next_entry){
     } else {
         return 0x0;
     }
-    
+
 }
 
 // Función para mostrar los datos binarios almacenados en el TLB
@@ -92,7 +92,7 @@ void display_tlb_entry(uint32_t *entry) {
 
     printf("Página: %d\n", entry[1]);
     printf("Desplazamiento: %d\n", entry[2]);
-    printf("Valid: %d\n", entry[3]);
+    //printf("Valid: %d\n", entry[3]);
 
 }
 
@@ -145,9 +145,9 @@ int main() {
 
         convert_to_binary_and_int(page_number, BINARY_SIZE, page_number_binary);
         convert_to_binary_and_int(offset, OFFSET_BINARY_SIZE, offset_binary);
-        
+
         unsigned int politica = direccion_reemplazo(tlb,next_entry);
-        
+
         // Buscar en el TLB si hay un hit o un miss
         bool hit = search_tlb(tlb, virtual_address);
         if (hit) {
@@ -179,10 +179,9 @@ int main() {
         clock_gettime(CLOCK_MONOTONIC, &end);
         double time_spent = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
         printf("Tiempo: %f segundos\n", time_spent);
-        
+
         printf("\n");
-        print_tlb(tlb);
-        
+
     }
 
     // Liberar la memoria dinámica del TLB (en el heap)
