@@ -38,7 +38,7 @@ uint32_t binary_to_decimal(const char *binary_str) {
 
 // Función para inicializar el TLB en el heap
     uint32_t* init_tlb() {
-    uint32_t *tlb = ( uint32_t*)malloc(TLB_ENTRIES *  * sizeof(uint32_t));
+    uint32_t *tlb = ( uint32_t*)malloc(TLB_ENTRIES * 4 * sizeof(uint32_t));
     if (tlb == NULL) {
         perror("Error al asignar memoria para el TLB");
         exit(EXIT_FAILURE); // Salir si no se puede asignar memoria
@@ -74,25 +74,22 @@ void add_to_tlb(uint32_t *tlb, uint32_t memory_address, uint32_t page_number, ui
     current_entry[1] = page_number;
     current_entry[2] = offset;
     current_entry[3] = 1; // Marca la entrada como válida
-
-    // Reemplazo FIFO: mover el índice a la siguiente posición
-    next_entry = (next_entry + 1) % TLB_ENTRIES;
 }
 
 // Mostrar dirección base de la entrada que será reemplazada (si es válida)
-void direccion_reemplazo(uint32_t *tlb,int next_entry){
+unsigned int direccion_reemplazo(uint32_t *tlb,int next_entry){
     uint32_t *current_entry = get_tlb_entry(tlb, next_entry);
     if (current_entry[3] == 1) {
-        printf("Politica de reemplazo: %p\n", (void*)tlb+ 4 * next_entry);
+       return (unsigned int)((uintptr_t)tlb + 4 * next_entry);
     } else {
-        printf("Politica de reemplazo: 0x0\n");
+        return 0x0;
     }
+    
 }
 
 // Función para mostrar los datos binarios almacenados en el TLB
 void display_tlb_entry(uint32_t *entry) {
 
-    printf("Memory Address: %x\n", entry[0]);
     printf("Página: %d\n", entry[1]);
     printf("Desplazamiento: %d\n", entry[2]);
     printf("Valid: %d\n", entry[3]);
@@ -127,6 +124,7 @@ int main() {
         // Salir del ciclo si el usuario presiona 's'
         if (input[0] == 's'){ 
             printf("Good bye!\n");
+            printf("\n");
             break;
         }
 
@@ -135,7 +133,7 @@ int main() {
         // Iniciar medición de tiempo
         clock_gettime(CLOCK_MONOTONIC, &start);
 
-        printf("TLB desde %p hasta %p\n",(void*)tlb,(void*)(tlb + TLB_ENTRIES * 5));
+        printf("TLB desde %p hasta %p\n",(void*)tlb,(void*)(tlb + TLB_ENTRIES * 4));
 
         // Calcular el número de página y el desplazamiento dentro de la página
         uint32_t page_number = virtual_address / PAGE_SIZE;
@@ -148,7 +146,8 @@ int main() {
         convert_to_binary_and_int(page_number, BINARY_SIZE, page_number_binary);
         convert_to_binary_and_int(offset, OFFSET_BINARY_SIZE, offset_binary);
         
-
+        unsigned int politica = direccion_reemplazo(tlb,next_entry);
+        
         // Buscar en el TLB si hay un hit o un miss
         bool hit = search_tlb(tlb, virtual_address);
         if (hit) {
@@ -168,11 +167,13 @@ int main() {
                 break;
             }
         }
+        // Reemplazo FIFO: mover el índice a la siguiente posición
+        next_entry = (next_entry + 1) % TLB_ENTRIES;
 
         printf("Página en binario: %s\n", page_number_binary);
         printf("Desplazamiento en binario: %s\n", offset_binary);
 
-        direccion_reemplazo(tlb,next_entry);
+        printf("Politica de reemplazo: 0x%x\n", politica);
 
         // Finalizar medición de tiempo
         clock_gettime(CLOCK_MONOTONIC, &end);
@@ -181,6 +182,7 @@ int main() {
         
         printf("\n");
         print_tlb(tlb);
+        
     }
 
     // Liberar la memoria dinámica del TLB (en el heap)
